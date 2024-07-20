@@ -5,6 +5,12 @@ import (
 	"regexp"
 )
 
+// HandlerFunc defines the function signature for handlers
+type HandlerFunc func(*Context)
+
+// HandlerPipeline is a slice of HandlerFunc
+type HandlerPipeline []HandlerFunc
+
 // Router interface
 type Router interface {
 	RoutesInterface
@@ -12,6 +18,7 @@ type Router interface {
 
 // RoutesInterface provides methods to handle routes
 type RoutesInterface interface {
+	Use(middleware ...HandlerFunc) RoutesInterface
 	Handle(method, path string, handler ...HandlerFunc) RoutesInterface
 	GET(path string, handler HandlerFunc) RoutesInterface
 	POST(path string, handler HandlerFunc) RoutesInterface
@@ -38,21 +45,44 @@ func NewRGroup(baseRoutePath string, driver *Driver) *RGroup {
 	}
 }
 
+func (r *RGroup) Use(middleware ...HandlerFunc) RoutesInterface {
+	r.Handlers = append(r.Handlers, middleware...)
+	return r.returnObj()
+}
+
 // BaseRoutePath returns the base route path for the group
 func (group *RGroup) BaseRoutePath() string {
 	return group.baseRoutePath
 }
 
-// Handle registers a handler for a specific HTTP method and path
-func (r *RGroup) Handle(method, relativePath string, handlers ...HandlerFunc) RoutesInterface {
+func (r *RGroup) handle(method, relativePath string, handlers ...HandlerFunc) RoutesInterface {
+	// Validate HTTP method using regex
 	var regEnLetter = regexp.MustCompile("^[A-Z]+$")
 	if !regEnLetter.MatchString(method) {
-		panic("http method " + method + " is not valid")
+		panic("HTTP method " + method + " is not valid")
 	}
+
+	// Calculate the absolute path for the route
 	absolutePath := r.calculateAbsolutePath(relativePath)
+
+	// Combine all handlers into a single HandlerFunc
 	combinedHandlers := r.combineHandlers(handlers...)
+
+	// Register the route with the driver
 	r.driver.AddRoute(method, absolutePath, combinedHandlers)
+
 	return r
+}
+
+func (r *RGroup) Handle(method, relativePath string, handlers ...HandlerFunc) RoutesInterface {
+	// Validate the HTTP method
+	var regEnLetter = regexp.MustCompile("^[A-Z]+$")
+	if !regEnLetter.MatchString(method) {
+		panic("HTTP method " + method + " is not valid")
+	}
+
+	// Delegate to the handle method to register the route
+	return r.handle(method, relativePath, handlers...)
 }
 
 // GET registers a handler for GET requests
@@ -98,10 +128,9 @@ func (r *RGroup) calculateAbsolutePath(relativePath string) string {
 	return r.baseRoutePath + relativePath
 }
 
-// combineHandlers combines multiple handlers into a single handler
-func (r *RGroup) combineHandlers(handlers ...HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, req *http.Request) {
-		ctx := NewContext(w, req)
+// combineHandlers combines multiple handlers into a single HandlerFunc
+func (r *RGroup) combineHandlers(handlers ...HandlerFunc) HandlerFunc {
+	return func(ctx *Context) {
 		for _, handler := range handlers {
 			handler(ctx)
 		}

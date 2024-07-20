@@ -2,26 +2,23 @@ package naspad
 
 import "net/http"
 
-type HandlerFunc func(*Context)
-
-type HandlerPipeline []HandlerFunc
-
+// Driver handles routing and implements the http.Handler interface
 type Driver struct {
 	RGroup
-	routes map[string]map[string]http.HandlerFunc
+	routes map[string]map[string]HandlerFunc
 }
 
 // NewDriver creates a new Driver instance
 func NewDriver() *Driver {
 	return &Driver{
-		routes: make(map[string]map[string]http.HandlerFunc),
+		routes: make(map[string]map[string]HandlerFunc),
 	}
 }
 
 // AddRoute registers a route for a specific method and path
-func (d *Driver) AddRoute(method, path string, handler http.HandlerFunc) {
+func (d *Driver) AddRoute(method, path string, handler HandlerFunc) {
 	if _, exists := d.routes[path]; !exists {
-		d.routes[path] = make(map[string]http.HandlerFunc)
+		d.routes[path] = make(map[string]HandlerFunc)
 	}
 	d.routes[path][method] = handler
 }
@@ -38,5 +35,5 @@ func (d *Driver) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	handler(w, r)
+	handler(NewContext(w, r))
 }
